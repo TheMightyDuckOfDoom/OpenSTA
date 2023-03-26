@@ -277,9 +277,13 @@ LibertyReader::defineVisitors()
 
   defineGroupVisitor("wire_load", &LibertyReader::beginWireload,
 		     &LibertyReader::endWireload);
+  defineGroupVisitor("wire_load_table", &LibertyReader::beginWireloadTable,
+		     &LibertyReader::endWireloadTable);
   defineAttrVisitor("resistance", &LibertyReader::visitResistance);
   defineAttrVisitor("slope", &LibertyReader::visitSlope);
   defineAttrVisitor("fanout_length", &LibertyReader::visitFanoutLength);
+  defineAttrVisitor("fanout_capacitance", &LibertyReader::visitFanoutCapacitance);
+  defineAttrVisitor("fanout_resistance", &LibertyReader::visitFanoutResistance);
 
   defineGroupVisitor("wire_load_selection",
 		     &LibertyReader::beginWireloadSelection,
@@ -1749,7 +1753,7 @@ LibertyReader::beginWireload(LibertyGroup *group)
   if (library_) {
     const char *name = group->firstName();
     if (name) {
-      wireload_ = new Wireload(name, library_);
+      wireload_ = new Wireload(name, library_, false);
       library_->addWireload(wireload_);
     }
   }
@@ -1764,6 +1768,26 @@ LibertyReader::endWireload(LibertyGroup *)
 }
 
 void
+LibertyReader::beginWireloadTable(LibertyGroup *group)
+{
+  if (library_) {
+    const char *name = group->firstName();
+    if (name) {
+      wireload_ = new Wireload(name, library_, true);
+      library_->addWireload(wireload_);
+    }
+  }
+  else
+    libWarn(171, group, "wire_load_table missing name.");
+}
+
+void
+LibertyReader::endWireloadTable(LibertyGroup *)
+{
+  wireload_ = nullptr;
+}
+
+void
 LibertyReader::visitResistance(LibertyAttr *attr)
 {
   if (wireload_) {
@@ -1771,7 +1795,7 @@ LibertyReader::visitResistance(LibertyAttr *attr)
     bool exists;
     getAttrFloat(attr, value, exists);
     if (exists)
-      wireload_->setResistance(value * res_scale_);
+      wireload_->addFanoutResistance(1.0F, value * res_scale_);
   }
 }
 
@@ -1798,6 +1822,34 @@ LibertyReader::visitFanoutLength(LibertyAttr *attr)
       wireload_->addFanoutLength(fanout, length);
     else
       libWarn(70, attr, "fanout_length is missing length and fanout.");
+  }
+}
+
+void
+LibertyReader::visitFanoutCapacitance(LibertyAttr *attr)
+{
+  if (wireload_) {
+    float fanout, capacitance;
+    bool exists;
+    getAttrFloat2(attr, fanout, capacitance, exists);
+    if (exists)
+      wireload_->addFanoutCapacitance(fanout, capacitance * cap_scale_);
+    else
+      libWarn(172, attr, "fanout_capacitance is missing capacitance and fanout.");
+  }
+}
+
+void
+LibertyReader::visitFanoutResistance(LibertyAttr *attr)
+{
+  if (wireload_) {
+    float fanout, resistance;
+    bool exists;
+    getAttrFloat2(attr, fanout, resistance, exists);
+    if (exists)
+      wireload_->addFanoutResistance(fanout, resistance * res_scale_);
+    else
+      libWarn(173, attr, "fanout_resistance is missing resistance and fanout.");
   }
 }
 
@@ -3315,7 +3367,7 @@ LibertyReader::visitCapacitance(LibertyAttr *attr)
     bool exists;
     getAttrFloat(attr, value, exists);
     if (exists)
-      wireload_->setCapacitance(value * cap_scale_);
+      wireload_->addFanoutCapacitance(1.0F, value * cap_scale_);
   }
 }
 
